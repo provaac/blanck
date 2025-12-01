@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout student repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Checkout hidden tests (provaac/solver_ex1)
+        uses: actions/checkout@v4
+        with:
+          repository: provaac/solver_ex1
+          ref: main                 # canvia-ho si la branca no és main
+          path: .hidden-tests
+          token: ${{ secrets.CLASSROOM_PAT }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f .hidden-tests/requirements.txt ]; then pip install -r .hidden-tests/requirements.txt; fi
+          pip install pytest
+
+      - name: Debug: list hidden tests dir
+        run: |
+          echo "Files under .hidden-tests (maxdepth 4):"
+          find .hidden-tests -maxdepth 4 -type f | sort || true
+
+      - name: Run hidden tests (auto-discovery)
+        run: |
+          set -e
+          TEST_PATH=$(find .hidden-tests -type f -name 'test_hidden.py' -print -quit)
+          if [ -z "$TEST_PATH" ]; then
+            echo "No s'ha trobat cap test_hidden.py dins .hidden-tests/"
+            exit 2
+          fi
+          echo "Executant pytest sobre el directori: $(dirname "$TEST_PATH")"
+          export PYTHONPATH="$PWD:$PYTHONPATH"   # <- assegura que 'solucio.py' s'importa
+          pytest -q "$(dirname "$TEST_PATH")"
